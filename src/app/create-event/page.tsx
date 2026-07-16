@@ -7,7 +7,7 @@ import { DEFAULT_CATEGORIES } from "@/lib/categories";
 export default function CreateEventPage() {
   const router = useRouter();
   const [form, setForm] = useState({
-    title: "", description: "", category: DEFAULT_CATEGORIES[0], address: "",
+    title: "", description: "", category: DEFAULT_CATEGORIES[0] as string, address: "",
     latitude: -23.5615, longitude: -46.6558, startsAt: "", capacity: "", isFree: true, price: "",
     petFriendly: false, accessible: false, hasParking: false, servesFood: false,
   });
