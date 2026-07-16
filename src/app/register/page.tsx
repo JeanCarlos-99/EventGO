@@ -29,7 +29,12 @@ export default function RegisterPage() {
     setLoading(false);
     if (!res.ok) {
       const data = await res.json();
-      setError(typeof data.error === "string" ? data.error : "Nao foi possivel cadastrar.");
+      if (data?.error?.fieldErrors) {
+        const messages = Object.values(data.error.fieldErrors).flat().filter(Boolean) as string[];
+        setError(messages.length ? messages.join(" ") : "Nao foi possivel cadastrar.");
+      } else {
+        setError(typeof data.error === "string" ? data.error : "Nao foi possivel cadastrar.");
+      }
       return;
     }
     router.push("/");

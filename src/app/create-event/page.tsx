@@ -1,21 +1,64 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import Navbar from "@/components/Navbar";
 import { DEFAULT_CATEGORIES } from "@/lib/categories";
+
+const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
+
+type GeoResult = { label: string; latitude: number; longitude: number };
 
 export default function CreateEventPage() {
   const router = useRouter();
   const [form, setForm] = useState({
     title: "", description: "", category: DEFAULT_CATEGORIES[0] as string, address: "",
-    latitude: -23.5615, longitude: -46.6558, startsAt: "", capacity: "", isFree: true, price: "",
+    latitude: null as number | null, longitude: null as number | null,
+    startsAt: "", capacity: "", isFree: true, price: "",
     petFriendly: false, accessible: false, hasParking: false, servesFood: false,
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [addressQuery, setAddressQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<GeoResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Busca sugestoes de endereco enquanto o usuario digita (com debounce, pra
+  // nao disparar uma requisicao a cada letra). Usa a API de geocodificacao
+  // do OpenStreetMap (ver src/app/api/geocode).
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (addressQuery.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await fetch(`/api/geocode?q=${encodeURIComponent(addressQuery)}`);
+        const data = await res.json();
+        setSuggestions(data.results || []);
+      } finally {
+        setSearching(false);
+      }
+    }, 500);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [addressQuery]);
+
+  function pickSuggestion(s: GeoResult) {
+    setForm({ ...form, address: s.label, latitude: s.latitude, longitude: s.longitude });
+    setAddressQuery(s.label);
+    setSuggestions([]);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (form.latitude === null || form.longitude === null) {
+      setError("Busque o endereco na lista de sugestoes e selecione um resultado, para localizarmos o evento no mapa.");
+      return;
+    }
     setLoading(true);
     setError(null);
     const res = await fetch("/api/events", {
@@ -23,8 +66,8 @@ export default function CreateEventPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
-        latitude: Number(form.latitude),
-        longitude: Number(form.longitude),
+        latitude: form.latitude,
+        longitude: form.longitude,
         capacity: form.capacity ? Number(form.capacity) : undefined,
         price: form.isFree ? undefined : Number(form.price),
       }),
@@ -32,12 +75,27 @@ export default function CreateEventPage() {
     setLoading(false);
     if (!res.ok) {
       const data = await res.json();
-      setError(res.status === 401 ? "Faca login para criar um evento." : "Verifique os campos do formulario.");
+      if (res.status === 401) {
+        setError("Faca login para criar um evento.");
+      } else if (data?.error?.fieldErrors) {
+        const messages = Object.values(data.error.fieldErrors).flat().filter(Boolean) as string[];
+        setError(messages.length ? messages.join(" ") : "Verifique os campos do formulario.");
+      } else {
+        setError(typeof data.error === "string" ? data.error : "Verifique os campos do formulario.");
+      }
       return;
     }
     const data = await res.json();
     router.push(`/event/${data.event.id}`);
   }
+
+  const previewEvents = form.latitude !== null && form.longitude !== null
+    ? [{
+        id: "preview", title: form.title || "Local do evento", category: form.category,
+        address: form.address, interestPct: 0, latitude: form.latitude, longitude: form.longitude,
+        description: "", startsAt: form.startsAt || new Date().toISOString(), isFree: true, goingCount: 0,
+      } as any]
+    : [];
 
   return (
     <div className="min-h-screen bg-paper">
@@ -51,7 +109,7 @@ export default function CreateEventPage() {
             onChange={(e) => setForm({ ...form, title: e.target.value })}
             className="rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-coral" />
 
-          <textarea required placeholder="Descricao" rows={4} value={form.description}
+          <textarea required placeholder="Descricao (minimo 3 caracteres)" rows={4} value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             className="rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-coral" />
 
@@ -65,21 +123,44 @@ export default function CreateEventPage() {
               className="rounded-lg border border-line px-3 py-2 text-sm" />
           </div>
 
-          <input required placeholder="Endereco" value={form.address}
-            onChange={(e) => setForm({ ...form, address: e.target.value })}
-            className="rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-coral" />
-
-          <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Latitude" type="number" step="any" value={form.latitude}
-              onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) as any })}
-              className="rounded-lg border border-line px-3 py-2 text-sm" />
-            <input placeholder="Longitude" type="number" step="any" value={form.longitude}
-              onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) as any })}
-              className="rounded-lg border border-line px-3 py-2 text-sm" />
+          <div className="relative">
+            <input
+              required
+              placeholder="Buscar cidade, bairro ou endereco..."
+              value={addressQuery || form.address}
+              onChange={(e) => {
+                setAddressQuery(e.target.value);
+                setForm({ ...form, address: e.target.value, latitude: null, longitude: null });
+              }}
+              className="w-full rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-coral"
+            />
+            {searching && <p className="mt-1 text-[11px] text-muted">Buscando...</p>}
+            {suggestions.length > 0 && (
+              <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-line bg-surface shadow-lg">
+                {suggestions.map((s, i) => (
+                  <button
+                    type="button" key={i} onClick={() => pickSuggestion(s)}
+                    className="block w-full border-b border-line px-3 py-2 text-left text-xs last:border-0 hover:bg-ink/5"
+                  >
+                    📍 {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {form.latitude !== null && form.longitude !== null ? (
+              <p className="mt-1 text-[11px] font-medium text-teal">✓ Local encontrado no mapa</p>
+            ) : (
+              <p className="mt-1 text-[11px] text-muted">
+                Digite e escolha uma opcao da lista para localizarmos o evento no mapa.
+              </p>
+            )}
           </div>
-          <p className="-mt-2 text-[11px] text-muted">
-            Dica: no app final, o usuario marca o local direto no mapa e o endereco e' preenchido automaticamente.
-          </p>
+
+          {previewEvents.length > 0 && (
+            <div className="h-52 overflow-hidden rounded-xl border border-line">
+              <MapView events={previewEvents} center={[form.latitude!, form.longitude!]} />
+            </div>
+          )}
 
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm">

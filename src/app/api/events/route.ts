@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
 
 const createSchema = z.object({
   title: z.string().min(3),
-  description: z.string().min(10),
+  description: z.string().min(3, "A descrição precisa ter pelo menos 3 caracteres."),
   category: z.string(),
   latitude: z.number(),
   longitude: z.number(),
