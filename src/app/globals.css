@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "leaflet/dist/leaflet.css";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: #F7F8FA;
+  color: #14171F;
+}
+
+/* Ajustes finos do Leaflet para o visual do EventGo */
+.leaflet-container {
+  font-family: inherit;
+  background: #EAECF2;
+}
+.leaflet-popup-content-wrapper {
+  border-radius: 14px;
+  padding: 0;
+}
+.leaflet-popup-content {
+  margin: 0;
+}
+
+.pin-marker {
+  width: 34px;
+  height: 34px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: linear-gradient(135deg, #FF4D6D 0%, #FF8A3D 100%);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pin-marker span {
+  transform: rotate(45deg);
+  font-size: 15px;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #D8DBE4; border-radius: 999px; }
+::-webkit-scrollbar-track { background: transparent; }

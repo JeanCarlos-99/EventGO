@@ -1,0 +1,157 @@
+// Schema do EventGo.
+// Usa PostgreSQL (funciona local e em produção — recomendamos um banco gratuito
+// no Neon ou Supabase, veja o README para o passo a passo).
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  username      String?  @unique
+  socialName    String?
+  email         String   @unique
+  phone         String?
+  passwordHash  String
+  birthDate     DateTime?
+  avatarUrl     String?
+  bio           String?
+  city          String?
+  state         String?
+  country       String?
+  interests     String?  // categorias favoritas, separadas por virgula
+  points        Int      @default(0)
+  level         Int      @default(1)
+  isPublic      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  eventsCreated      Event[]             @relation("Organizer")
+  eventInterests     EventInterest[]
+  reviews            Review[]
+  pointsTransactions PointsTransaction[]
+
+  friendshipsSent     Friendship[] @relation("Requester")
+  friendshipsReceived Friendship[] @relation("Addressee")
+
+  messagesSent     Message[] @relation("MessageSender")
+  messagesReceived Message[] @relation("MessageReceiver")
+}
+
+// Conversa 1-para-1 entre amigos. O chat usa polling (busca novas mensagens a
+// cada poucos segundos) em vez de WebSockets, pra funcionar sem infraestrutura
+// extra num projeto local.
+model Message {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  sender     User     @relation("MessageSender", fields: [senderId], references: [id])
+  receiver   User     @relation("MessageReceiver", fields: [receiverId], references: [id])
+  content    String
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([senderId, receiverId])
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  isCustom    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  events      Event[]
+}
+
+model Event {
+  id            String   @id @default(cuid())
+  title         String
+  description   String
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id])
+  organizerId   String
+  organizer     User     @relation("Organizer", fields: [organizerId], references: [id])
+
+  latitude      Float
+  longitude     Float
+  address       String
+
+  startsAt      DateTime
+  endsAt        DateTime?
+  capacity      Int?
+
+  isFree        Boolean  @default(true)
+  price         Float?
+  externalLink  String?
+  coverImage    String?
+
+  petFriendly       Boolean @default(false)
+  accessible        Boolean @default(false)
+  hasParking        Boolean @default(false)
+  coveredArea       Boolean @default(false)
+  servesFood        Boolean @default(false)
+  servesDrinks      Boolean @default(false)
+  ageRating         String?
+  rules             String?
+  hashtags          String?
+
+  createdAt     DateTime @default(now())
+
+  interests     EventInterest[]
+  reviews       Review[]
+}
+
+// Guarda favoritar / marcar interesse / confirmar presenca / check-in de um usuario num evento.
+// E' a partir daqui que calculamos a "% de interesse da comunidade" de cada evento.
+model EventInterest {
+  id        String   @id @default(cuid())
+  userId    String
+  eventId   String
+  user      User     @relation(fields: [userId], references: [id])
+  event     Event    @relation(fields: [eventId], references: [id])
+  viewed    Boolean  @default(false)
+  favorited Boolean  @default(false)
+  going     Boolean  @default(false)
+  checkedIn Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, eventId])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  eventId   String
+  user      User     @relation(fields: [userId], references: [id])
+  event     Event    @relation(fields: [eventId], references: [id])
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+}
+
+model PointsTransaction {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  amount    Int
+  reason    String
+  createdAt DateTime @default(now())
+}
+
+// SQLite nao suporta enums nativos do Prisma, entao o status e' um texto livre:
+// "PENDING" | "ACCEPTED" | "BLOCKED" (ver src/lib/friendship.ts para as constantes).
+model Friendship {
+  id           String   @id @default(cuid())
+  requesterId  String
+  addresseeId  String
+  requester    User     @relation("Requester", fields: [requesterId], references: [id])
+  addressee    User     @relation("Addressee", fields: [addresseeId], references: [id])
+  status       String   @default("PENDING")
+  createdAt    DateTime @default(now())
+
+  @@unique([requesterId, addresseeId])
+}
